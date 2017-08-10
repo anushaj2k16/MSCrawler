@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename field &apos;i&apos; in &apos;MSCrawler&apos; to &apos;iCounter&apos;&#x0D;&#x0A;- Original project: &apos;GraphifiedCrawler&apos;&#x0D;&#x0A;- Original element: &apos;MSCrawler.i&apos;&#x0D;&#x0A;- Renamed element: &apos;MSCrawler.iCounter&apos;&#x0D;&#x0A;- Update references to refactored element&#x0D;&#x0A;- Update textual occurrences in comments and strings" delegate="false" deprecate="false" description="Rename field &apos;i&apos;" flags="589826" getter="false" id="org.eclipse.jdt.ui.rename.field" input="/src&lt;{MSCrawler.java[MSCrawler^i" name="iCounter" references="true" setter="false" stamp="1501341633774" textual="false" version="1.0"/>
+</session>
