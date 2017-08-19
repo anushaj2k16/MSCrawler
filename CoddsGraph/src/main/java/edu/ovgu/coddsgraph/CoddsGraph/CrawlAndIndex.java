@@ -45,7 +45,7 @@ public class CrawlAndIndex
 	private static int TOTAL_HOPS=1;
 	private static Map<Object, Object> idsToVisitofCurrentHop;
 	private static Map<Object, Object> idsToVisitofNextHop;
-
+	
 	private static Map<Object, Object> idsVisited;
 	static DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH-mm");
 	static LocalDateTime now = LocalDateTime.now();
@@ -57,16 +57,28 @@ public class CrawlAndIndex
     	idsToVisitofCurrentHop = new HashMap<>();
     	idsToVisitofNextHop = new HashMap<>();
         idsVisited=new HashMap<>();
-    	String JSONResult_seed;
-    	String JSONResult;
-    	
-    	JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","10","0");
+    	String JSONResult_seed="";
+    	String JSONResult="";	
+    	try {
+			JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5");
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			try {
+				Thread.sleep(36000000);
+				JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5");
+			} catch (Exception e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+		
+		}
     	System.out.println("Indexing started");
     	JsonObject root = new JsonParser().parse(JSONResult_seed).getAsJsonObject();
    		JsonArray jsonarray = root.getAsJsonArray("entities");
    		for(JsonElement json:jsonarray){
     	idsToVisitofCurrentHop.put(json.getAsJsonObject().get("Id").toString(), NUM_HOPS);
    		}
+   		jsonreqobj.addIdsToList(JSONResult_seed);
     	jsonreqobj.indexEdges(JSONResult_seed); 	
     	jsonreqobj.indexVertex(JSONResult_seed); 		
 
@@ -75,14 +87,27 @@ public class CrawlAndIndex
 	   	 Iterator it = idsToVisitofCurrentHop.entrySet().iterator();
 	   	 
 	   	 while (it.hasNext()) {
-	   
 	   	 Map.Entry pair = (Map.Entry)it.next();
 		 temp= temp+"Id="+ pair.getKey().toString()+",";
 	   	 count++;
 	   	 if (count==TOTAL_ID_COUNT_TOQUERY|| !(it.hasNext())){ 
-	   		JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY),"0");	   		
+	   		try {
+				JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY));
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				try {
+					Thread.sleep(36000000);
+					JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY));
+				} catch (Exception e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
+	   
+	   		System.out.println("Before removing items from the list :"+ idsToVisitofCurrentHop.size());
 	   		jsonreqobj.indexEdges(JSONResult);
 		   	 jsonreqobj.indexVertex(JSONResult);
+		   	
 		   	 it = idsToVisitofCurrentHop.entrySet().iterator();	   	
 		     count=0;
 		     temp="";
@@ -93,23 +118,22 @@ public class CrawlAndIndex
     }
 
 
-	private  String getData(String expression, String attributes, String count, String from) {
+	private  String getData(String expression, String attributes, String count) throws Exception {
 		HttpClient httpclient = HttpClients.createDefault();       
 		String JSONResult=null;
         try
         {
+        	System.out.println(expression);
         	  URIBuilder builder = new URIBuilder("https://westus.api.cognitive.microsoft.com/academic/v1.0/evaluate");
               builder.setParameter("expr", expression);
               builder.setParameter("model", "latest");
               builder.setParameter("attributes", attributes );
               builder.setParameter("count", count);
-              builder.setParameter("from", from);
+              //builder.setParameter("from", from);
         	  System.out.println(builder.toString());
               URI uri = builder.build();
               HttpGet request = new HttpGet(uri);
               request.setHeader("Ocp-Apim-Subscription-Key", "dbe029f01ce145f5a41390c981f3bfc5"); // dbe029f01ce145f5a41390c981f3bfc5
-
-
             // Request body
             HttpUriRequest reqEntity = request;    
             HttpResponse response = httpclient.execute(reqEntity);
@@ -118,13 +142,14 @@ public class CrawlAndIndex
             if (entity != null) 
             {
               JSONResult=EntityUtils.toString(entity);
-            //  System.out.println(JSONResult);
+              System.out.println(JSONResult);
        		 
             }
+            
         }
         catch (Exception e)
         {
-            System.out.println(e.getMessage());
+        	throw e;
         }
         return JSONResult;
 	}
@@ -136,8 +161,8 @@ public class CrawlAndIndex
 			int from=0;
 			String RId;
 			String ReferenceIds = "";
-			String JSONResult_edges;
-			int verify=0;
+			String JSONResult_edges="";
+			int removeCnt=0;
 			
 			
 		   if (vertexFileName == null) {
@@ -147,13 +172,13 @@ public class CrawlAndIndex
 					vertexFW = new FileWriter(new File(vertexFileName), true);
 					sb.append("UniqueId");
 					sb.append(',');
-					sb.append("PaperId");
+					sb.append("paperID:ID");
 					sb.append(',');
 					sb.append("Title");
 					sb.append(',');
-					sb.append("PublishInYear");
+					sb.append("PublishInYear:int");
 					sb.append(',');
-/*					sb.append("Journal Id");
+					sb.append("Journal Id");
 					sb.append(',');
 					sb.append("Journal Name");
 					sb.append(',');
@@ -164,12 +189,14 @@ public class CrawlAndIndex
 					sb.append("Source URL");
 					sb.append(',');
 					sb.append("Venue Short Name");
-					sb.append(',');*/
+					sb.append(',');
 					sb.append("TimestampAdded");
 					sb.append(',');
 					sb.append("TimestampLastVisited");
 					sb.append(',');		
 					sb.append("TimestampMod");
+					sb.append(',');		
+					sb.append(":LABEL");
 					vertexFW.write(System.getProperty("line.separator"));
 					vertexFW.write(sb.toString());
 				} catch (IOException e1) {
@@ -193,7 +220,7 @@ public class CrawlAndIndex
 			   		sb.append(',');
 			   		sb.append(json.getAsJsonObject().get("Y"));
 			   		sb.append(','); 
-			 /*  		sb.append(json.getAsJsonObject().get("J.JId"));
+			 		sb.append(json.getAsJsonObject().get("J.JId"));
 			   		sb.append(',');
 			   		sb.append(json.getAsJsonObject().get("J.JN"));
 			   		sb.append(',');
@@ -204,12 +231,14 @@ public class CrawlAndIndex
 			   		sb.append(json.getAsJsonObject().get("S.U"));
 			   		sb.append(',');
 			   		sb.append(json.getAsJsonObject().get("VSN"));
-			   		sb.append(',');*/
+			   		sb.append(',');
 			   		sb.append(dtf_ts.format(now));
 			   		sb.append(",");
 			   		sb.append(dtf_ts.format(now));
 			   		sb.append(",");
 			   		sb.append(dtf_ts.format(now));
+			   		sb.append(",");
+			   		sb.append("paper");
 			   		vertexFW.write(System.getProperty("line.separator"));
 			   		vertexFW.write(sb.toString());	
 			   		
@@ -223,11 +252,21 @@ public class CrawlAndIndex
 			   		
 					if(!idsToVisitofCurrentHop.isEmpty()){
 						idsToVisitofCurrentHop.remove(json.getAsJsonObject().get("Id").toString());
+					//	System.out.println(json.getAsJsonObject().get("Id").toString());
+						removeCnt++;
+						/*if(idsToVisitofCurrentHop.containsKey(json.getAsJsonObject().get("Id").toString())){
+							System.out.println("contains after removing");
+						}
+						else{
+							System.out.println(removeCnt + "Doesn't contain after removing");
+						}*/
+						
 					
 					}
 					
 						RId= "RId="+json.getAsJsonObject().get("Id").toString() ;
-						ReferenceIds=ReferenceIds+ RId+",";						
+						ReferenceIds=ReferenceIds+ RId+",";		
+						
 						//String citationCount=json.getAsJsonObject().get("CC").toString();
 							
 						
@@ -281,12 +320,26 @@ public class CrawlAndIndex
 		   		/*ReferenceIds=ReferenceIds.substring(0, ReferenceIds.length()-1);
 		   		JSONResult_edges=getData(ReferenceIds, "Id,RId", "100",Integer.toString(from));
 		   			jsonreqobj.indexEdges(JSONResult_edges);*/
+		   		System.out.println(ReferenceIds);
+		   		System.out.println("Count of removed items : "+ removeCnt);
+				System.out.println("After removing 100 elements : "+idsToVisitofCurrentHop.size());
+
+		   		if(NUM_HOPS<TOTAL_HOPS){
+		   		try {
+		   			
+					JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", Integer.toString(TOTAL_ID_COUNT_TOQUERY));
+				} catch (Exception e) {
+					try {
+						Thread.sleep(3600000);
+						JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", Integer.toString(TOTAL_ID_COUNT_TOQUERY));
+					} catch (Exception e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}	
+				}	
+		   			jsonreqobj.addIdsToList(JSONResult_edges);
+		   		}
 		   		
-		   		
-		   		JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", Integer.toString(TOTAL_ID_COUNT_TOQUERY),Integer.toString(from));
-		   		jsonreqobj.addIdsToList(JSONResult_edges);
-	
-		   		System.out.println("After removing 100 elements : "+idsToVisitofCurrentHop.size());
 				
 				if(idsToVisitofCurrentHop.size()>0){
 					//do nothing
@@ -310,13 +363,16 @@ public class CrawlAndIndex
 				edgeFileName = "cites" + dtf.format(now) + ".csv";
 				try {
 					edgeFW = new FileWriter(new File(edgeFileName), true);
+					
+					sb.append(":START_ID");
+					sb.append(',');
+					sb.append(":END_ID");
+					sb.append(',');
 					sb.append("UniqueId");
 					sb.append(',');
-					sb.append("ToPaperId");
-					sb.append(',');
-					sb.append("FromPaperId");
-					sb.append(',');
 					sb.append("TimeStamp");
+					sb.append(',');
+					sb.append(":TYPE");
 					edgeFW.write(System.getProperty("line.separator"));
 					edgeFW.write(sb.toString());
 				} catch (IOException e1) {
@@ -328,38 +384,24 @@ public class CrawlAndIndex
 		   JsonObject root = new JsonParser().parse(paperIds).getAsJsonObject();
 	   		JsonArray jsonarray = root.getAsJsonArray("entities");
 	   		for(JsonElement json:jsonarray){
-	   		/*	
-	   			if(NUM_HOPS<TOTAL_HOPS){
-   					if(!(idsToVisitofCurrentHop.containsKey(json.getAsJsonObject().get("Id").toString()))&&
-   							!(idsVisited.containsKey(json.getAsJsonObject().get("Id").toString()))&&
-   							!(idsToVisitofNextHop.containsKey(json.getAsJsonObject().get("Id").toString()))){
-   						idsToVisitofNextHop.put( json.getAsJsonObject().get("Id"),NUM_HOPS+1);
-   					}
-	   			}*/
 	   			if(json.getAsJsonObject().toString().contains("RId")){				
 	   			referenceIds=json.getAsJsonObject().get("RId").toString().replace("[", "").replace("]", "").split(",");			
 	   			for(int i=0;i<referenceIds.length;i++){
 	   				try {
-		   		/*		if(NUM_HOPS<TOTAL_HOPS){
-		   					if(!(idsToVisitofCurrentHop.containsKey(referenceIds[i]))&&
-		   							!(idsVisited.containsKey(referenceIds[i]))&&
-		   							!(idsToVisitofNextHop.containsKey(referenceIds[i]))){
-		   						idsToVisitofNextHop.put( referenceIds[i],NUM_HOPS+1);
-		   					}
-			   				
-		   				}*/
 		   				uniqueId_citedby=getUniqueId();
 			   			sb=new StringBuilder();
-			   			sb.append(uniqueId_citedby);
-				   		sb.append(',');
+			   			
 			   			sb.append(json.getAsJsonObject().get("Id"));
 				   		sb.append(',');
 				   		sb.append(referenceIds[i]);
 				   		sb.append(',');
-				   	
+				   		sb.append(uniqueId_citedby);
+				   		sb.append(',');
 				   		DateTimeFormatter dtf_ts = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 				   		LocalDateTime now = LocalDateTime.now();
 				   		sb.append(dtf_ts.format(now));
+				   		sb.append(',');
+				   		sb.append("Cites");
 				   		edgeFW.write(System.getProperty("line.separator"));
 				   		edgeFW.write(sb.toString());						
 						writeToUpstream(operation.CREATE, subject.CITED_BY, uniqueId_citedby, json.getAsJsonObject());
@@ -381,7 +423,7 @@ public class CrawlAndIndex
  					if(!(idsToVisitofCurrentHop.containsKey(json.getAsJsonObject().get("Id").toString()))&&
  							!(idsVisited.containsKey(json.getAsJsonObject().get("Id").toString()))&&
  							!(idsToVisitofNextHop.containsKey(json.getAsJsonObject().get("Id").toString()))){
- 						idsToVisitofNextHop.put( json.getAsJsonObject().get("Id"),NUM_HOPS+1);
+ 						idsToVisitofNextHop.put( json.getAsJsonObject().get("Id").toString(),NUM_HOPS+1);
  					}
 	   			}
 	   			if(json.getAsJsonObject().toString().contains("RId")){				
