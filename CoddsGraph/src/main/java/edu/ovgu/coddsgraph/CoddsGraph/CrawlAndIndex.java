@@ -30,25 +30,29 @@ public class CrawlAndIndex
 	private  String edgeFileName;
 	private  String authorFileName;
 	private  String UpstreamFileName;
+	private String backUpFileName;
 	private  StringBuilder sb;
-	private static boolean ft=true;
 	DateTimeFormatter uniqueId_ts = DateTimeFormatter.ofPattern("yyyyMMddhhmmss");
 	DateTimeFormatter dtf_ts = DateTimeFormatter.ofPattern("yyyy-MM-ddHH:mm:ss");
 	private  FileWriter vertexFW;
 	private  FileWriter edgeFW;
 	private  FileWriter upstreamFW;
 	private  FileWriter authorFW;
+	private FileWriter backUpFW;
 	private static int TOTAL_ID_COUNT_TOQUERY=100;
 	private int counter=0;
-	//private Iterator it ;
+	private static String[] subscriptionKeys={"dbe029f01ce145f5a41390c981f3bfc5","2","3"};
+	private static String subKey=subscriptionKeys[0];
+	private int posSKey=0;
 	private static int NUM_HOPS=0;
 	private static int TOTAL_HOPS=1;
 	private static Map<Object, Object> idsToVisitofCurrentHop;
 	private static Map<Object, Object> idsToVisitofNextHop;
-	
+	private static int subscriptionKeyLimit=1;
 	private static Map<Object, Object> idsVisited;
 	static DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH-mm");
 	static LocalDateTime now = LocalDateTime.now();
+	
 	
     public static void main(String[] args) 
     {
@@ -68,6 +72,7 @@ public class CrawlAndIndex
 				JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5");
 			} catch (Exception e1) {
 				// TODO Auto-generated catch block
+				jsonreqobj.backUp();
 				e1.printStackTrace();
 			}
 		
@@ -81,9 +86,7 @@ public class CrawlAndIndex
    		jsonreqobj.addIdsToList(JSONResult_seed);
     	jsonreqobj.indexEdges(JSONResult_seed); 	
     	jsonreqobj.indexVertex(JSONResult_seed); 		
-
-    
-        //idsToVisitCopy.putAll(idsToVisit);
+    	
 	   	 Iterator it = idsToVisitofCurrentHop.entrySet().iterator();
 	   	 
 	   	 while (it.hasNext()) {
@@ -100,6 +103,7 @@ public class CrawlAndIndex
 					JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY));
 				} catch (Exception e1) {
 					// TODO Auto-generated catch block
+					jsonreqobj.backUp();
 					e1.printStackTrace();
 				}
 			}
@@ -121,6 +125,16 @@ public class CrawlAndIndex
 	private  String getData(String expression, String attributes, String count) throws Exception {
 		HttpClient httpclient = HttpClients.createDefault();       
 		String JSONResult=null;
+		
+		if(subscriptionKeyCountLimitReached()){
+			posSKey+=1;
+			if(posSKey<subscriptionKeys.length+1){
+				subKey=subscriptionKeys[posSKey];
+			}
+		}else{
+			subscriptionKeyLimit++;
+		}
+		
         try
         {
         	System.out.println(expression);
@@ -133,7 +147,7 @@ public class CrawlAndIndex
         	  System.out.println(builder.toString());
               URI uri = builder.build();
               HttpGet request = new HttpGet(uri);
-              request.setHeader("Ocp-Apim-Subscription-Key", "dbe029f01ce145f5a41390c981f3bfc5"); // dbe029f01ce145f5a41390c981f3bfc5
+              request.setHeader("Ocp-Apim-Subscription-Key",subKey ); // dbe029f01ce145f5a41390c981f3bfc5
             // Request body
             HttpUriRequest reqEntity = request;    
             HttpResponse response = httpclient.execute(reqEntity);
@@ -334,6 +348,7 @@ public class CrawlAndIndex
 						JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", Integer.toString(TOTAL_ID_COUNT_TOQUERY));
 					} catch (Exception e1) {
 						// TODO Auto-generated catch block
+						jsonreqobj.backUp();
 						e1.printStackTrace();
 					}	
 				}	
@@ -544,10 +559,44 @@ public class CrawlAndIndex
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
-					}
-								
+					}					
 						
-					} 
+				} 
+	 
+	 public static boolean subscriptionKeyCountLimitReached(){
+			if(subscriptionKeyLimit>9999){
+				return true;
+			}
+			return false;
+		}
+	 
+	 public void backUp(){
+		 String thisHopIds="";
+		 String nextHopIds="";
+	     Iterator itCurrentHop = idsToVisitofCurrentHop.entrySet().iterator();   	 
+	   	 while (itCurrentHop.hasNext()) {
+	   		 	Map.Entry pair = (Map.Entry)itCurrentHop.next();
+	   		 	thisHopIds=thisHopIds+pair.getKey().toString()+",";
+	   	 }
+	   	 
+	     Iterator itNextHop = idsToVisitofNextHop.entrySet().iterator();   	 
+	   	 while (itNextHop.hasNext()) {
+	   		 	Map.Entry pair = (Map.Entry)itNextHop.next();
+	   		 	nextHopIds=nextHopIds+pair.getKey().toString()+",";
+	   	 }
+	   	 
+	   	if (backUpFileName == null) {
+	   		backUpFileName = "backUp" + dtf.format(now) + ".csv";
+				try {
+					backUpFW.write(thisHopIds);
+					backUpFW.write(System.getProperty("line.separator"));
+					backUpFW.write(nextHopIds);
+					backUpFW.close();
+				} catch (Exception e) {
+					// TODO: handle exception
+				}
+	   	}
+	 }
 		    
 	 public enum operation{
 		 CREATE,
