@@ -1,7 +1,10 @@
 // // This sample uses the Apache HTTP client from HTTP Components (http://hc.apache.org/httpcomponents-client-ga/)
 package edu.ovgu.coddsgraph.CoddsGraph;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -31,6 +34,10 @@ public class CrawlAndIndex
 	private  String authorFileName;
 	private  String UpstreamFileName;
 	private String backUpFileName;
+	private String dummyFN;
+	private String idsToVisitCurrentHopFN;
+	private String idsToVisitNextHopFN;
+	private String idsVisitedFN;
 	private  StringBuilder sb;
 	DateTimeFormatter uniqueId_ts = DateTimeFormatter.ofPattern("yyyyMMddhhmmss");
 	DateTimeFormatter dtf_ts = DateTimeFormatter.ofPattern("yyyy-MM-ddHH:mm:ss");
@@ -38,24 +45,29 @@ public class CrawlAndIndex
 	private  FileWriter edgeFW;
 	private  FileWriter upstreamFW;
 	private  FileWriter authorFW;
-	private FileWriter backUpFW;
-	private static int TOTAL_ID_COUNT_TOQUERY=100;
-	private int counter=0;
+	private FileWriter idsToVisitCurrentHopFW;
+	private FileWriter idsToVisitNextHopFW;
+	private FileWriter idsVisitedFW;
+	private FileWriter dummyFW;
+	private static int TOTAL_ID_COUNT_TOQUERY=100; //change it to 100
+	private int uniqueIdCounter=0;
 	private static String[] subscriptionKeys={"dbe029f01ce145f5a41390c981f3bfc5","2","3"};
 	private static String subKey=subscriptionKeys[0];
 	private int posSKey=0;
 	private static int NUM_HOPS=0;
-	private static int TOTAL_HOPS=1;
+	private static int TOTAL_HOPS=2;
 	private static Map<Object, Object> idsToVisitofCurrentHop;
 	private static Map<Object, Object> idsToVisitofNextHop;
 	private static int subscriptionKeyLimit=1;
 	private static Map<Object, Object> idsVisited;
 	static DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH-mm");
 	static LocalDateTime now = LocalDateTime.now();
-	
+	private static String beforeFailOver;
 	
     public static void main(String[] args) 
     {
+
+    	beforeFailOver=args[0];
     	String temp="";
     	int count=0;
     	idsToVisitofCurrentHop = new HashMap<>();
@@ -63,64 +75,57 @@ public class CrawlAndIndex
         idsVisited=new HashMap<>();
     	String JSONResult_seed="";
     	String JSONResult="";	
+    	
     	try {
-			JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5");
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			try {
-				Thread.sleep(36000000);
-				JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5");
-			} catch (Exception e1) {
+    		if(beforeFailOver.toUpperCase().equals("TRUE")){	
+				JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5");			
+		    	
+				System.out.println("Indexing started");
+		    	
+				JsonObject root = new JsonParser().parse(JSONResult_seed).getAsJsonObject();
+		   		JsonArray jsonarray = root.getAsJsonArray("entities");
+		   		
+		   		for(JsonElement json:jsonarray){
+		   			idsToVisitofCurrentHop.put(json.getAsJsonObject().get("Id").toString(), NUM_HOPS);
+		   		}
+		   		jsonreqobj.addIdsToList(JSONResult_seed);
+		    	jsonreqobj.indexEdges(JSONResult_seed); 	
+		    	jsonreqobj.indexVertex(JSONResult_seed); 
+		    	//jsonreqobj.backUp();
+    		}
+    		else{
+    			jsonreqobj.loadToListFromFiles("idsToVisitInCurrentHop.csv", idsToVisitofCurrentHop);
+    			jsonreqobj.loadToListFromFiles("idsToVisitNextHop.csv", idsToVisitofNextHop);
+    			jsonreqobj.loadToListFromFiles("idsVisited.csv", idsVisited);
+    		}
+    		
+		   	Iterator it = idsToVisitofCurrentHop.entrySet().iterator();
+		   	 
+		   	while (it.hasNext()) {
+		   		Map.Entry pair = (Map.Entry)it.next();
+				temp= temp+"Id="+ pair.getKey().toString()+",";
+			   	count++;
+			   	if (count==TOTAL_ID_COUNT_TOQUERY|| !(it.hasNext())){ 
+			   		JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY));	   
+			   		System.out.println("Before removing items from the list :"+ idsToVisitofCurrentHop.size());
+			   		jsonreqobj.indexEdges(JSONResult);
+				   	jsonreqobj.indexVertex(JSONResult);
+				   	
+				   	it = idsToVisitofCurrentHop.entrySet().iterator();	   	
+				    count=0;
+				    temp="";
+			   	 }
+		    
+		    }
+		} catch (Exception e1) {
 				// TODO Auto-generated catch block
 				jsonreqobj.backUp();
 				e1.printStackTrace();
 			}
 		
-		}
-    	System.out.println("Indexing started");
-    	JsonObject root = new JsonParser().parse(JSONResult_seed).getAsJsonObject();
-   		JsonArray jsonarray = root.getAsJsonArray("entities");
-   		for(JsonElement json:jsonarray){
-    	idsToVisitofCurrentHop.put(json.getAsJsonObject().get("Id").toString(), NUM_HOPS);
-   		}
-   		jsonreqobj.addIdsToList(JSONResult_seed);
-    	jsonreqobj.indexEdges(JSONResult_seed); 	
-    	jsonreqobj.indexVertex(JSONResult_seed); 		
-    	
-	   	 Iterator it = idsToVisitofCurrentHop.entrySet().iterator();
-	   	 
-	   	 while (it.hasNext()) {
-	   	 Map.Entry pair = (Map.Entry)it.next();
-		 temp= temp+"Id="+ pair.getKey().toString()+",";
-	   	 count++;
-	   	 if (count==TOTAL_ID_COUNT_TOQUERY|| !(it.hasNext())){ 
-	   		try {
-				JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY));
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				try {
-					Thread.sleep(36000000);
-					JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY));
-				} catch (Exception e1) {
-					// TODO Auto-generated catch block
-					jsonreqobj.backUp();
-					e1.printStackTrace();
-				}
-			}
-	   
-	   		System.out.println("Before removing items from the list :"+ idsToVisitofCurrentHop.size());
-	   		jsonreqobj.indexEdges(JSONResult);
-		   	 jsonreqobj.indexVertex(JSONResult);
-		   	
-		   	 it = idsToVisitofCurrentHop.entrySet().iterator();	   	
-		     count=0;
-		     temp="";
-	   	 }
-	    
-	    }
      System.out.println("Indexing ends");
-    }
 
+	}
 
 	private  String getData(String expression, String attributes, String count) throws Exception {
 		HttpClient httpclient = HttpClients.createDefault();       
@@ -157,10 +162,26 @@ public class CrawlAndIndex
             {
               JSONResult=EntityUtils.toString(entity);
               System.out.println(JSONResult);
-       		 
-            }
-            
+              if (dummyFN == null) {
+            	  dummyFN = "dummy" + dtf.format(now) + ".csv";
+              }
+              else{
+            	  
+            		try {
+      					dummyFW = new FileWriter(new File(dummyFN), true);
+      					dummyFW.write(System.getProperty("line.separator"));
+      					dummyFW.write(JSONResult);
+                }
+      				
+      			  catch (Exception e)
+      		        {
+      		        	throw e;
+      		        }
+              }
+  			
         }
+       
+     }
         catch (Exception e)
         {
         	throw e;
@@ -340,20 +361,18 @@ public class CrawlAndIndex
 
 		   		if(NUM_HOPS<TOTAL_HOPS){
 		   		try {
-		   			
-					JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", Integer.toString(TOTAL_ID_COUNT_TOQUERY));
+		   			//JSONResult_edges=getData(ReferenceIds.substring(0, ReferenceIds.length()-1), "Id,RId", "50000");
+					JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", "1000"); //We are putting 50k here. Will it work? //change it to 1000
+					//JsonObject root1 = new JsonParser().parse(jsonArray).getAsJsonObject();
+			   		//JsonArray jsonarray1 = root.getAsJsonArray("entities");
+			   		//System.out.println("size is 50K?"+jsonarray1.size());
 				} catch (Exception e) {
-					try {
-						Thread.sleep(3600000);
-						JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", Integer.toString(TOTAL_ID_COUNT_TOQUERY));
-					} catch (Exception e1) {
-						// TODO Auto-generated catch block
 						jsonreqobj.backUp();
-						e1.printStackTrace();
+						e.printStackTrace();
 					}	
 				}	
 		   			jsonreqobj.addIdsToList(JSONResult_edges);
-		   		}
+		   		
 		   		
 				
 				if(idsToVisitofCurrentHop.size()>0){
@@ -458,7 +477,7 @@ public class CrawlAndIndex
 	 }
 	 
 	 public String getUniqueId(){
-		return  (uniqueId_ts.format(now)+"-"+"001"+"-"+"01"+"-"+((counter++)%99));
+		return  (uniqueId_ts.format(now)+"-"+"001"+"-"+"01"+"-"+((uniqueIdCounter++)%99));
 	 }
 
 	 public void indexAuthor(String fromPaperId,String jsonArray){
@@ -544,7 +563,7 @@ public class CrawlAndIndex
 				}			
 			}		
 		   			sb=new StringBuilder();
-		   			sb.append(uniqueId_ts.format(now)+"-"+"001"+"-"+"01"+"-"+((counter++)%99));
+		   			sb.append(uniqueId_ts.format(now)+"-"+"001"+"-"+"01"+"-"+((uniqueIdCounter++)%99));
 			   		sb.append(',');
 		   			sb.append(operation_value);
 			   		sb.append(',');
@@ -571,31 +590,114 @@ public class CrawlAndIndex
 		}
 	 
 	 public void backUp(){
-		 String thisHopIds="";
-		 String nextHopIds="";
-	     Iterator itCurrentHop = idsToVisitofCurrentHop.entrySet().iterator();   	 
-	   	 while (itCurrentHop.hasNext()) {
-	   		 	Map.Entry pair = (Map.Entry)itCurrentHop.next();
-	   		 	thisHopIds=thisHopIds+pair.getKey().toString()+",";
-	   	 }
+		 
+	     Iterator itCurrentHop = idsToVisitofCurrentHop.entrySet().iterator();   
+	     if(idsToVisitCurrentHopFN==null){
+	    	 idsToVisitCurrentHopFN="idsToVisitInCurrentHop"+".csv";
+	    	 try {
+				idsToVisitCurrentHopFW= new FileWriter(new File(idsToVisitCurrentHopFN),true);
+			} catch (IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+	    	 
+	       	 while (itCurrentHop.hasNext()) {
+		   		 	Map.Entry pair = (Map.Entry)itCurrentHop.next();
+		   		 try {
+		   			
+		   			idsToVisitCurrentHopFW.write(pair.getKey().toString()+":"+pair.getValue().toString());
+		   			idsToVisitCurrentHopFW.write(System.getProperty("line.separator"));	
+		   			
+					} catch (Exception e) {
+						// TODO: handle exception
+					}
+		   	 }
+	     }
+	
+	     Iterator itNextHop = idsToVisitofNextHop.entrySet().iterator();   
+	     if(idsToVisitNextHopFN==null){
+	    	 idsToVisitNextHopFN="idsToVisitNextHop"+".csv";
+	    	 
+	    	 try {
+				idsToVisitNextHopFW= new FileWriter(new File(idsToVisitNextHopFN),true);
+			} catch (IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+	    	 
+	       	 while (itNextHop.hasNext()) {
+		   		 	Map.Entry pair = (Map.Entry)itNextHop.next();
+		   		 try {
+		   			
+		   			idsToVisitNextHopFW.write(pair.getKey().toString()+":"+pair.getValue().toString());
+		   			idsToVisitNextHopFW.write(System.getProperty("line.separator"));	
+		   			
+					} catch (Exception e) {
+						// TODO: handle exception
+					}
+		   	 }
+	     }
+
 	   	 
-	     Iterator itNextHop = idsToVisitofNextHop.entrySet().iterator();   	 
-	   	 while (itNextHop.hasNext()) {
-	   		 	Map.Entry pair = (Map.Entry)itNextHop.next();
-	   		 	nextHopIds=nextHopIds+pair.getKey().toString()+",";
-	   	 }
-	   	 
-	   	if (backUpFileName == null) {
-	   		backUpFileName = "backUp" + dtf.format(now) + ".csv";
-				try {
-					backUpFW.write(thisHopIds);
-					backUpFW.write(System.getProperty("line.separator"));
-					backUpFW.write(nextHopIds);
-					backUpFW.close();
-				} catch (Exception e) {
-					// TODO: handle exception
+	     Iterator itVisited = idsVisited.entrySet().iterator();   	 
+	     if(idsVisitedFN==null){
+	    	 idsVisitedFN="idsVisited"+".csv";
+	    	 
+	    	 try {
+	    		 idsVisitedFW= new FileWriter(new File(idsVisitedFN),true);
+				} catch (IOException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
 				}
-	   	}
+	       	 while (itVisited.hasNext()) {
+		   		 	Map.Entry pair = (Map.Entry)itVisited.next();
+		   		 try {
+		   			
+		   			idsVisitedFW.write(pair.getKey().toString()+":"+pair.getValue().toString());
+		   			idsVisitedFW.write(System.getProperty("line.separator"));		   			
+					} catch (Exception e) {
+						// TODO: handle exception
+					}
+		   	 }
+	     }
+	     
+	 /*    try {
+			idsToVisitCurrentHopFW.close();
+			idsToVisitNextHopFW.close();
+			idsVisitedFW.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}*/
+	     
+	 }
+	 
+	 public void loadToListFromFiles(String backUpFile, Map<Object, Object> ids){
+		 String filePath = backUpFile;
+		    String line;
+		    BufferedReader reader;
+				
+		    try {
+		    	reader = new BufferedReader(new FileReader(filePath));
+				while ((line = reader.readLine()) != null)
+				{
+				    String[] parts = line.split(":", 2);
+				    if (parts.length >= 2)
+				    {
+				        String key = parts[0];
+				        String value = parts[1];
+				        ids.put(key, value);
+				    } else {
+				        System.out.println("ignoring line: " + line);
+				    }
+				}
+						
+			    reader.close();
+				
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 	 }
 		    
 	 public enum operation{
