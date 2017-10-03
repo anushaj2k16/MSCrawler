@@ -41,10 +41,10 @@ public class CrawlAndIndex
 	private  StringBuilder sb;
 	DateTimeFormatter uniqueId_ts = DateTimeFormatter.ofPattern("yyyyMMddhhmmss");
 	DateTimeFormatter dtf_ts = DateTimeFormatter.ofPattern("yyyy-MM-ddHH:mm:ss");
-	private  FileWriter vertexFW;
-	private  FileWriter edgeFW;
-	private  FileWriter upstreamFW;
-	private  FileWriter authorFW;
+	private static FileWriter vertexFW;
+	private static FileWriter edgeFW;
+	private static FileWriter upstreamFW;
+	private static FileWriter authorFW;
 	private FileWriter idsToVisitCurrentHopFW;
 	private FileWriter idsToVisitNextHopFW;
 	private FileWriter idsVisitedFW;
@@ -78,7 +78,7 @@ public class CrawlAndIndex
     	
     	try {
     		if(beforeFailOver.toUpperCase().equals("TRUE")){	
-				JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5");			
+				JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5","0");			
 		    	
 				System.out.println("Indexing started");
 		    	
@@ -91,7 +91,6 @@ public class CrawlAndIndex
 		   		jsonreqobj.addIdsToList(JSONResult_seed);
 		    	jsonreqobj.indexEdges(JSONResult_seed); 	
 		    	jsonreqobj.indexVertex(JSONResult_seed); 
-		    	//jsonreqobj.backUp();
     		}
     		else{
     			jsonreqobj.loadToListFromFiles("idsToVisitInCurrentHop.csv", idsToVisitofCurrentHop);
@@ -106,7 +105,7 @@ public class CrawlAndIndex
 				temp= temp+"Id="+ pair.getKey().toString()+",";
 			   	count++;
 			   	if (count==TOTAL_ID_COUNT_TOQUERY|| !(it.hasNext())){ 
-			   		JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY));	   
+			   		JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY),"0");	   
 			   		System.out.println("Before removing items from the list :"+ idsToVisitofCurrentHop.size());
 			   		jsonreqobj.indexEdges(JSONResult);
 				   	jsonreqobj.indexVertex(JSONResult);
@@ -123,11 +122,22 @@ public class CrawlAndIndex
 				e1.printStackTrace();
 			}
 		
+    	try {
+			vertexFW.close();
+	    	edgeFW.close();
+	    	upstreamFW.close();
+	    	authorFW.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+    	
      System.out.println("Indexing ends");
 
 	}
 
-	private  String getData(String expression, String attributes, String count) throws Exception {
+	private  String getData(String expression, String attributes, String count,String from) throws Exception {
 		HttpClient httpclient = HttpClients.createDefault();       
 		String JSONResult=null;
 		
@@ -148,6 +158,7 @@ public class CrawlAndIndex
               builder.setParameter("model", "latest");
               builder.setParameter("attributes", attributes );
               builder.setParameter("count", count);
+              builder.addParameter("offset", from);
               //builder.setParameter("from", from);
         	  System.out.println(builder.toString());
               URI uri = builder.build();
@@ -302,7 +313,7 @@ public class CrawlAndIndex
 						RId= "RId="+json.getAsJsonObject().get("Id").toString() ;
 						ReferenceIds=ReferenceIds+ RId+",";		
 						
-						//String citationCount=json.getAsJsonObject().get("CC").toString();
+						String citationCount=json.getAsJsonObject().get("CC").toString();
 							
 						
 						//JSONResult_edges=getData(ReferenceIds, "Id,RId", "5",Integer.toString(from));
@@ -324,27 +335,46 @@ public class CrawlAndIndex
 						}*/
 						
 						//To get all records for citations >1000
-						/*int citedCount=Integer.parseInt(citationCount);
+						int citedCount=Integer.parseInt(citationCount);
 						int quotient;
 						int remainder;
 						if (citedCount>1000){
 							quotient=citedCount/1000; 
 							remainder=citedCount%1000;
 							for(int i=0;i<quotient;i++){					
-								JSONResult_edges=getData(RId, "Id", citationCount,Integer.toString(from));
-								jsonreqobj.indexEdges(json.getAsJsonObject().get("Id").toString(),JSONResult_edges);
+								try {
+									JSONResult_edges=getData(RId, "Id,RId", citationCount,Integer.toString(from));
+									jsonreqobj.addIdsToList(JSONResult_edges);
+								} catch (Exception e) {
+									// TODO Auto-generated catch block
+									e.printStackTrace();
+								}
+								//jsonreqobj.indexEdges(json.getAsJsonObject().get("Id").toString(),JSONResult_edges);
 								from=from+1000;
 							}
 							if (remainder>0){
-								from=from+remainder;
-								JSONResult_edges=getData(RId, "Id", citationCount,Integer.toString(from));
-								jsonreqobj.indexEdges(json.getAsJsonObject().get("Id").toString(),JSONResult_edges);
+								//from=from+remainder;
+								try {
+									JSONResult_edges=getData(RId, "Id,RId", citationCount,Integer.toString(from));
+									jsonreqobj.addIdsToList(JSONResult_edges);
+								} catch (Exception e) {
+									// TODO Auto-generated catch block
+									e.printStackTrace();
+								}
+								//jsonreqobj.indexEdges(json.getAsJsonObject().get("Id").toString(),JSONResult_edges);
 							}
 						}
 						else{
-							JSONResult_edges=getData(RId, "Id", citationCount,Integer.toString(from));
-							jsonreqobj.indexEdges(json.getAsJsonObject().get("Id").toString(),JSONResult_edges);
-						}*/
+							try {
+								JSONResult_edges=getData(RId, "Id,RId", citationCount,Integer.toString(from));
+								jsonreqobj.addIdsToList(JSONResult_edges);
+								jsonreqobj.backUp();
+							} catch (Exception e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+							//jsonreqobj.indexEdges(json.getAsJsonObject().get("Id").toString(),JSONResult_edges);
+						}
 						
 						 			  		
 					} catch (IOException e) {
@@ -362,7 +392,7 @@ public class CrawlAndIndex
 		   		if(NUM_HOPS<TOTAL_HOPS){
 		   		try {
 		   			//JSONResult_edges=getData(ReferenceIds.substring(0, ReferenceIds.length()-1), "Id,RId", "50000");
-					JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", "1000"); //We are putting 50k here. Will it work? //change it to 1000
+					//JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", "1000",); //We are putting 50k here. Will it work? //change it to 1000
 					//JsonObject root1 = new JsonParser().parse(jsonArray).getAsJsonObject();
 			   		//JsonArray jsonarray1 = root.getAsJsonArray("entities");
 			   		//System.out.println("size is 50K?"+jsonarray1.size());
@@ -612,6 +642,13 @@ public class CrawlAndIndex
 						// TODO: handle exception
 					}
 		   	 }
+	       	 
+	       	try {
+				idsToVisitCurrentHopFW.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 	     }
 	
 	     Iterator itNextHop = idsToVisitofNextHop.entrySet().iterator();   
@@ -619,7 +656,7 @@ public class CrawlAndIndex
 	    	 idsToVisitNextHopFN="idsToVisitNextHop"+".csv";
 	    	 
 	    	 try {
-				idsToVisitNextHopFW= new FileWriter(new File(idsToVisitNextHopFN),true);
+	    		 idsToVisitNextHopFW= new FileWriter(new File(idsToVisitNextHopFN),true);
 			} catch (IOException e1) {
 				// TODO Auto-generated catch block
 				e1.printStackTrace();
@@ -636,6 +673,12 @@ public class CrawlAndIndex
 						// TODO: handle exception
 					}
 		   	 }
+	       	try {
+				idsToVisitNextHopFW.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 	     }
 
 	   	 
@@ -659,6 +702,13 @@ public class CrawlAndIndex
 						// TODO: handle exception
 					}
 		   	 }
+	       	 
+	       	try {
+				idsVisitedFW.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 	     }
 	     
 	 /*    try {
