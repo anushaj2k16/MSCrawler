@@ -19,6 +19,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -107,12 +111,8 @@ public class CrawlAndIndex
 		   		}
 		   		jsonreqobj.addIdsToList(JSONResult_seed);
 		   		jsonreqobj.indexVertex(JSONResult_seed); 
-		    	jsonreqobj.indexEdges(JSONResult_seed); 	
-		    	
-		    	//remove
-		    	printListSizes();
-	   			jsonreqobj.backUp();
-	   			exitCrawl();  
+		    	jsonreqobj.indexEdges(JSONResult_seed); 
+	
 		    	
     		}
     		else{
@@ -120,6 +120,7 @@ public class CrawlAndIndex
     			jsonreqobj.loadToListFromFiles("idsToVisitInCurrentHop.csv", idsToVisitofCurrentHop);
     			jsonreqobj.loadToListFromFiles("idsToVisitNextHop.csv", idsToVisitofNextHop);
     			jsonreqobj.loadToListFromFiles("idsVisited.csv", idsVisited);
+    			
     			
     			if(idsToVisitofCurrentHop.isEmpty()){
     				if(!idsToVisitofNextHop.isEmpty()){
@@ -129,7 +130,7 @@ public class CrawlAndIndex
     			}
     		}
     		
-		   	Iterator it = idsToVisitofCurrentHop.entrySet().iterator();
+		  	Iterator it = idsToVisitofCurrentHop.entrySet().iterator();
 		   	 
 		   	while (it.hasNext()) {
 		   		if(!jsonreqobj.checkForTimeOut()){
@@ -155,7 +156,8 @@ public class CrawlAndIndex
 					System.exit(0);
 		   		}
 		    }
-		} catch (Exception e1) {
+		} 
+    	catch (Exception e1) {
 			    printListSizes();
 				jsonreqobj.backUp();
 				e1.printStackTrace();
@@ -265,7 +267,7 @@ public class CrawlAndIndex
 			int sumCitationCount=0;
 			
 		   if (vertexFileName == null) {
-				vertexFileName = "papers" + dtf.format(now) + ".csv";
+				vertexFileName = "papers"+".csv";
 				
 				try {
 					vertexFW = new FileWriter(new File(vertexFileName), true);
@@ -474,7 +476,7 @@ public class CrawlAndIndex
 		 String[] referenceIds;
 		 String uniqueId_citedby;
 		   if (edgeFileName == null) {
-				edgeFileName = "cites" + dtf.format(now) + ".csv";
+				edgeFileName = "cites"+".csv";
 				try {
 					edgeFW = new FileWriter(new File(edgeFileName), true);
 					
@@ -650,7 +652,7 @@ public class CrawlAndIndex
 		 String uniqueId_author;
 
 		   if (authorFileName == null) {
-			   authorFileName = "author" + dtf.format(now) + ".csv";
+			   authorFileName = "author"+".csv";
 				try {
 					authorFW = new FileWriter(new File(authorFileName), true);
 					sb.append("UniqueId");
@@ -746,6 +748,7 @@ public class CrawlAndIndex
 	 
 	 public static boolean subscriptionKeyCountLimitReached(){
 			if(subscriptionKeyLimit>=200000){
+				logger.info("Ran out of Money!!!, You have completed 200K transactions");
 				return true;
 			}
 			return false;
@@ -841,7 +844,7 @@ public class CrawlAndIndex
 	     if(subscriptionKeyMaintainingFN==null){
 	    	 subscriptionKeyMaintainingFN="subscriptionKeyMaintaining"+".csv";
 	    	 try {
-	    		 subscriptionKeyMaintainingFW= new FileWriter(new File(idsToVisitCurrentHopFN),true);
+	    		 subscriptionKeyMaintainingFW= new FileWriter(new File(subscriptionKeyMaintainingFN),true);
 	    		 subscriptionKeyMaintainingFW.write("Subscription during backup - " +subscriptionKeyLimit);
 	    		 subscriptionKeyMaintainingFW.close();
 			} catch (IOException e1) {
@@ -886,6 +889,7 @@ public class CrawlAndIndex
 		 long elapsedSeconds = tDelta / 1000;
 		 int min =(int) (elapsedSeconds/60);
 		 if(min>45){
+			 logger.info("TimeOut - Reached 45 mins since the start");
 			 return true;
 		 }
 		 return false;
