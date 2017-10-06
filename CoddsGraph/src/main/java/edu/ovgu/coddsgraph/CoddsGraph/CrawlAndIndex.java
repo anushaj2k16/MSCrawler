@@ -22,7 +22,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -118,9 +117,16 @@ public class CrawlAndIndex
     		else{
     			logger.debug("Indexing started..Execution after failover");
     			jsonreqobj.loadToListFromFiles("idsToVisitInCurrentHop.csv", idsToVisitofCurrentHop);
-    			jsonreqobj.loadToListFromFiles("idsToVisitNextHop.csv", idsToVisitofNextHop);
-    			jsonreqobj.loadToListFromFiles("idsVisited.csv", idsVisited);
+    			Path pathofidsToVisitInCurrentHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsToVisitInCurrentHop.csv");
+    			Files.delete(pathofidsToVisitInCurrentHop);
     			
+    			jsonreqobj.loadToListFromFiles("idsToVisitNextHop.csv", idsToVisitofNextHop);
+    			Path pathofidsToVisitofNextHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsToVisitNextHop.csv");
+    			Files.delete(pathofidsToVisitofNextHop);
+    			
+    			jsonreqobj.loadToListFromFiles("idsVisited.csv", idsVisited);
+    			Path pathofidsVisited=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsVisited.csv");
+    			Files.delete(pathofidsVisited);
     			
     			if(idsToVisitofCurrentHop.isEmpty()){
     				if(!idsToVisitofNextHop.isEmpty()){
@@ -152,7 +158,7 @@ public class CrawlAndIndex
 		   			jsonreqobj.backUp();
 					logger.info("Transaction count during termination - "+subscriptionKeyLimit);
 					logger.info("Exiting after 45 minutes");
-					 exitCrawl();  
+					exitCrawl();  
 					System.exit(0);
 		   		}
 		    }
