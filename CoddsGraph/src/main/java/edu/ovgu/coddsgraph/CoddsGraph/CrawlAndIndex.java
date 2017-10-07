@@ -5,7 +5,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
-
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -39,6 +38,7 @@ public class CrawlAndIndex
 	private String backUpFileName;
 	private String idsToVisitFN;
 	private String dummyFN;
+	private String subscriptionKeyMaintainingFN;
 	private String idsToVisitCurrentHopFN;
 	private String idsToVisitNextHopFN;
 	private String idsVisitedFN;
@@ -53,28 +53,33 @@ public class CrawlAndIndex
 	private FileWriter idsToVisitCurrentHopFW;
 	private FileWriter idsToVisitNextHopFW;
 	private FileWriter idsVisitedFW;
+	private FileWriter subscriptionKeyMaintainingFW;
 	private FileWriter dummyFW;
 	private static int TOTAL_ID_COUNT_TOQUERY=100; //change it to 100
 	private int uniqueIdCounter=0;
 	private static String[] subscriptionKeys={"dbe029f01ce145f5a41390c981f3bfc5","2","3"};
 	private static String subKey=subscriptionKeys[0];
 	private int posSKey=0;
-	private static int NUM_HOPS=0;
+	private static int NUM_HOPS;
 	private static int TOTAL_HOPS=2;
 	private static Map<String, Integer> idsToVisitofCurrentHop;
 	private static Map<String, Integer> idsToVisitofNextHop;
-	private static int subscriptionKeyLimit=0;
+	private static int subscriptionKeyLimit;
 	private static Map<String, Integer> idsVisited;
 	static DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH-mm");
 	static LocalDateTime now = LocalDateTime.now();
+	private static LocalDateTime startTime=LocalDateTime.now();
 	private static String beforeFailOver;
+	private static Long startTimeInMilSec;
 	final static Logger logger = Logger.getLogger(CrawlAndIndex.class);
 
 	
     public static void main(String[] args) 
-    {
-    	
+    {  	
+    	startTimeInMilSec = System.currentTimeMillis();	
     	beforeFailOver=args[0];
+    	subscriptionKeyLimit=Integer.parseInt(args[1]);
+    	NUM_HOPS=Integer.parseInt(args[2]);
     	String temp="";
     	int count=0;
     	idsToVisitofCurrentHop = new HashMap<>();
@@ -84,7 +89,7 @@ public class CrawlAndIndex
     	String JSONResult="";	
     	
     	try {
-    		
+   
     		Properties properties = new Properties();
     		properties.load(CrawlAndIndex.class.getResourceAsStream("log4j.properties"));
     		PropertyConfigurator.configure(properties);
@@ -101,36 +106,57 @@ public class CrawlAndIndex
 		   			idsToVisitofCurrentHop.put(json.getAsJsonObject().get("Id").toString(), NUM_HOPS);
 		   		}
 		   		jsonreqobj.addIdsToList(JSONResult_seed);
+		   		jsonreqobj.indexVertex(JSONResult_seed); 
 		    	jsonreqobj.indexEdges(JSONResult_seed); 	
-		    	jsonreqobj.indexVertex(JSONResult_seed); 
+		    	
+		    	//remove
+		    	printListSizes();
+	   			jsonreqobj.backUp();
+	   			exitCrawl();  
+		    	
     		}
     		else{
     			logger.debug("Indexing started..Execution after failover");
     			jsonreqobj.loadToListFromFiles("idsToVisitInCurrentHop.csv", idsToVisitofCurrentHop);
     			jsonreqobj.loadToListFromFiles("idsToVisitNextHop.csv", idsToVisitofNextHop);
     			jsonreqobj.loadToListFromFiles("idsVisited.csv", idsVisited);
+    			
+    			if(idsToVisitofCurrentHop.isEmpty()){
+    				if(!idsToVisitofNextHop.isEmpty()){
+    					idsToVisitofCurrentHop.putAll(idsToVisitofNextHop);
+    					idsToVisitofNextHop.clear();
+    				}
+    			}
     		}
     		
 		   	Iterator it = idsToVisitofCurrentHop.entrySet().iterator();
 		   	 
 		   	while (it.hasNext()) {
+		   		if(!jsonreqobj.checkForTimeOut()){
 		   		Map.Entry pair = (Map.Entry)it.next();
 				temp= temp+"Id="+ pair.getKey().toString()+",";
 			   	count++;
 			   	if (count==TOTAL_ID_COUNT_TOQUERY|| !(it.hasNext())){ 
 			   		JSONResult= jsonreqobj.getData("OR("+temp.substring(0, temp.length()-1)+")" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN",Integer.toString(TOTAL_ID_COUNT_TOQUERY),"0");	   
-			   		logger.debug("Before removing items from the list :"+ idsToVisitofCurrentHop.size());
-			   		jsonreqobj.indexEdges(JSONResult);
-				   	jsonreqobj.indexVertex(JSONResult);
-				   	
+			   		printListSizes();
+			   		jsonreqobj.indexVertex(JSONResult); 
+			   		jsonreqobj.indexEdges(JSONResult);		   	
 				   	it = idsToVisitofCurrentHop.entrySet().iterator();	   	
 				    count=0;
 				    temp="";
 			   	 }
-		    
+		   		}
+		   		else{
+		   			printListSizes();
+		   			jsonreqobj.backUp();
+					logger.info("Transaction count during termination - "+subscriptionKeyLimit);
+					logger.info("Exiting after 45 minutes");
+					 exitCrawl();  
+					System.exit(0);
+		   		}
 		    }
 		} catch (Exception e1) {
-				// TODO Auto-generated catch block
+			    printListSizes();
 				jsonreqobj.backUp();
 				e1.printStackTrace();
 			}	
@@ -139,13 +165,21 @@ public class CrawlAndIndex
 
 	}
 
+	private static void printListSizes() {
+		logger.debug("Current Hop list :"+ idsToVisitofCurrentHop.size());
+		logger.debug("Next Hop list :"+ idsToVisitofNextHop.size());
+		logger.debug("Visited list :"+ idsVisited.size());
+	}
+
 	private static void exitCrawl() {
 		try {
 			vertexFW.close();
 	    	edgeFW.close();
 	    	upstreamFW.close();
 	    	authorFW.close();
+	    	if(idsToVisitFW!=null){
 	    	idsToVisitFW.close();
+	    	}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -154,69 +188,70 @@ public class CrawlAndIndex
 	private  String getData(String expression, String attributes, String count,String from) throws Exception {
 		HttpClient httpclient = HttpClients.createDefault();       
 		String JSONResult=null;
-		
-		if(subscriptionKeyCountLimitReached()){		
-			jsonreqobj.backUp();
-			exitCrawl();
-			/*posSKey+=1;
-			if(posSKey<subscriptionKeys.length+1){
-				subKey=subscriptionKeys[posSKey];*/
-			//}
-		}else{
-			subscriptionKeyLimit++;
-			logger.info("Subscriprion key count - "+ subscriptionKeyLimit);
-		}
-		
-        try
-        {
-        	  URIBuilder builder = new URIBuilder("https://westus.api.cognitive.microsoft.com/academic/v1.0/evaluate");
-              builder.setParameter("expr", expression);
-              builder.setParameter("model", "latest");
-              builder.setParameter("attributes", attributes );
-              builder.setParameter("count", count);
-              builder.addParameter("offset", from);
-              //builder.setParameter("from", from);
-        	  logger.debug("Query - "+builder.toString());
-              URI uri = builder.build();
-              HttpGet request = new HttpGet(uri);
-              request.setHeader("Ocp-Apim-Subscription-Key",subKey ); // dbe029f01ce145f5a41390c981f3bfc5
-            // Request body
-            HttpUriRequest reqEntity = request;    
-            HttpResponse response = httpclient.execute(reqEntity);
-            HttpEntity entity = response.getEntity();
 
-            if (entity != null) 
-            {
-              JSONResult=EntityUtils.toString(entity);
-              logger.debug(JSONResult);
-              if (dummyFN == null) {
-            	  dummyFN = "dummy" + dtf.format(now) + ".csv";
-              }
-              else{
-            	  
-            		try {
-      					dummyFW = new FileWriter(new File(dummyFN), true);
-      					dummyFW.write(System.getProperty("line.separator"));
-      					dummyFW.write(JSONResult);
-                }
-      				
-      			  catch (Exception e)
-      		        {
-      				  logger.info("Exception occured inside getData() - "+ e.getMessage());
-      		        	throw e;
-      		        }
-              }
-  			
-        }
-       
-     }
-        catch (Exception e)
-        {
-        	logger.info("Exception occured inside getData() - "+ e.getMessage());
-        	throw e;
-        }
-        
+
+			if(subscriptionKeyCountLimitReached()){		
+				jsonreqobj.backUp();
+				exitCrawl();
+				/*posSKey+=1;
+				if(posSKey<subscriptionKeys.length+1){
+					subKey=subscriptionKeys[posSKey];*/
+				//}
+			}else{
+				subscriptionKeyLimit++;
+				logger.info("Subscriprion key count - "+ subscriptionKeyLimit);
+			}
+		
+	        try
+	        {
+	        	  URIBuilder builder = new URIBuilder("https://westus.api.cognitive.microsoft.com/academic/v1.0/evaluate");
+	              builder.setParameter("expr", expression);
+	              builder.setParameter("model", "latest");
+	              builder.setParameter("attributes", attributes );
+	              builder.setParameter("count", count);
+	              builder.addParameter("offset", from);
+	              //builder.setParameter("from", from);
+	        	  logger.debug("Query - "+builder.toString());
+	              URI uri = builder.build();
+	              HttpGet request = new HttpGet(uri);
+	              request.setHeader("Ocp-Apim-Subscription-Key",subKey ); // dbe029f01ce145f5a41390c981f3bfc5
+	            // Request body
+	            HttpUriRequest reqEntity = request;    
+	            HttpResponse response = httpclient.execute(reqEntity);
+	            HttpEntity entity = response.getEntity();
+	
+	            if (entity != null) 
+	            {
+	              JSONResult=EntityUtils.toString(entity);
+	              //logger.debug(JSONResult);
+	              if (dummyFN == null) {
+	            	  dummyFN = "dummy" + dtf.format(now) + ".csv";
+	              }
+	              else{
+	            	  
+	            		try {
+	      					dummyFW = new FileWriter(new File(dummyFN), true);
+	      					dummyFW.write(System.getProperty("line.separator"));
+	      					dummyFW.write(JSONResult);
+	                }
+	      				
+	      			  catch (Exception e)
+	      		        {
+	      				  logger.info("Exception occured inside getData() - "+ e.getMessage());
+	      		        	throw e;
+	      		        }
+	              }
+	  			
+	        }
+	       
+	     }
+	        catch (Exception e)
+	        {
+	        	logger.info("Exception occured inside getData() - "+ e.getMessage());
+	        	throw e;
+	        }
         return JSONResult;
+
 	}
      	
     
@@ -271,53 +306,9 @@ public class CrawlAndIndex
 		   		
 		   		JsonObject root = new JsonParser().parse(jsonArray).getAsJsonObject();
 		   		JsonArray jsonarray = root.getAsJsonArray("entities");
-		   		for(JsonElement json:jsonarray){		   		
-		   		try {
-		   			uniqueId_paper=getUniqueId();
-			   		LocalDateTime now = LocalDateTime.now();
-		   			sb=new StringBuilder();
-		   			sb.append(uniqueId_paper);
-			   		sb.append(',');
-		   			sb.append(json.getAsJsonObject().get("Id"));
-			   		sb.append(',');
-			   		sb.append(json.getAsJsonObject().get("Ti").toString().replaceAll("^\"|\"$", ""));
-			   		sb.append(',');
-			   		sb.append(json.getAsJsonObject().get("Y"));
-			   		sb.append(','); 
-			 		sb.append(json.getAsJsonObject().get("J.JId"));
-			   		sb.append(',');
-			   		sb.append(json.getAsJsonObject().get("J.JN"));
-			   		sb.append(',');
-			   		sb.append(json.getAsJsonObject().get("C.CId"));
-			   		sb.append(',');
-			   		sb.append(json.getAsJsonObject().get("C.CN"));
-			   		sb.append(',');
-			   		sb.append(json.getAsJsonObject().get("S.U"));
-			   		sb.append(',');
-			   		sb.append(json.getAsJsonObject().get("VSN"));
-			   		sb.append(',');
-			   		sb.append(dtf_ts.format(now));
-			   		sb.append(",");
-			   		sb.append(dtf_ts.format(now));
-			   		sb.append(",");
-			   		sb.append(dtf_ts.format(now));
-			   		sb.append(",");
-			   		sb.append("paper");
-			   		vertexFW.write(System.getProperty("line.separator"));
-			   		vertexFW.write(sb.toString());	
-			   		
-			   		//write log after every write to papers.csv file
-			   		writeToUpstream(operation.CREATE, subject.PAPERS,uniqueId_paper, root);
-			   		
-			   		//write author details to author.csv
-			   		jsonreqobj.indexAuthor(json.getAsJsonObject().get("Id").toString(), jsonArray);
-			   		
-			   		idsVisited.put(json.getAsJsonObject().get("Id").toString(), NUM_HOPS);
-			   		
-					if(!idsToVisitofCurrentHop.isEmpty()){
-						idsToVisitofCurrentHop.remove(json.getAsJsonObject().get("Id").toString());					
-					}
-					
+		   		for(JsonElement json:jsonarray){	
+		   			
+		   			if(NUM_HOPS<=TOTAL_HOPS){
 						RId= "RId="+json.getAsJsonObject().get("Id").toString() ;
 						String citationCount=json.getAsJsonObject().get("CC").toString();
 																			
@@ -339,6 +330,7 @@ public class CrawlAndIndex
 									sumCitationCount=0;
 									ReferenceIds="";
 								} catch (Exception e) {
+									printListSizes();
 									jsonreqobj.backUp();
 									e.printStackTrace();
 								}
@@ -347,7 +339,7 @@ public class CrawlAndIndex
 							
 							quotient=citedCount/1000; 
 							//remainder=citedCount%1000;
-							for(int i=0;i<=quotient;i++){					
+							for(int i=0;i<=quotient;i++){				
 								try {
 									JSONResult_edges=getData(RId, "Id,RId", citationCount,Integer.toString(from));
 									if(idsToVisitofNextHop.size()<=12000000){
@@ -357,21 +349,12 @@ public class CrawlAndIndex
 										jsonreqobj.addIdsToFile(JSONResult_edges);
 									}
 								} catch (Exception e) {
+									printListSizes();
 									jsonreqobj.backUp();
 									e.printStackTrace();
 								}
 								from=from+1000;
 							}
-						/*	if (remainder>0){
-								//from=from+remainder;
-								try {
-									JSONResult_edges=getData(RId, "Id,RId", citationCount,Integer.toString(from));
-									jsonreqobj.addIdsToList(JSONResult_edges);
-								} catch (Exception e) {
-									// TODO Auto-generated catch block
-									e.printStackTrace();
-								}
-							}*/
 						}
 						else{
 							//make a batch of 1000 and place a call to the API
@@ -393,29 +376,70 @@ public class CrawlAndIndex
 									sumCitationCount=citedCount;
 									ReferenceIds=ReferenceIds+ RId+",";
 								} catch (Exception e) {
+									printListSizes();
 									jsonreqobj.backUp();
 									e.printStackTrace();
 								}
 								
 							}
 						}
-						
-						 			  		
+		   			}		
+						try {
+				   			uniqueId_paper=getUniqueId();
+					   		LocalDateTime now = LocalDateTime.now();
+				   			sb=new StringBuilder();
+				   			sb.append(uniqueId_paper);
+					   		sb.append(',');
+				   			sb.append(json.getAsJsonObject().get("Id"));
+					   		sb.append(',');
+					   		sb.append(json.getAsJsonObject().get("Ti").toString().replaceAll("^\"|\"$", ""));
+					   		sb.append(',');
+					   		sb.append(json.getAsJsonObject().get("Y"));
+					   		sb.append(','); 
+					 		sb.append(json.getAsJsonObject().get("J.JId"));
+					   		sb.append(',');
+					   		sb.append(json.getAsJsonObject().get("J.JN"));
+					   		sb.append(',');
+					   		sb.append(json.getAsJsonObject().get("C.CId"));
+					   		sb.append(',');
+					   		sb.append(json.getAsJsonObject().get("C.CN"));
+					   		sb.append(',');
+					   		sb.append(json.getAsJsonObject().get("S.U"));
+					   		sb.append(',');
+					   		sb.append(json.getAsJsonObject().get("VSN"));
+					   		sb.append(',');
+					   		sb.append(dtf_ts.format(now));
+					   		sb.append(",");
+					   		sb.append(dtf_ts.format(now));
+					   		sb.append(",");
+					   		sb.append(dtf_ts.format(now));
+					   		sb.append(",");
+					   		sb.append("paper");
+					   		vertexFW.write(System.getProperty("line.separator"));
+					   		vertexFW.write(sb.toString());	
+					   		
+					   		//write log after every write to papers.csv file
+					   		writeToUpstream(operation.CREATE, subject.PAPERS,uniqueId_paper, root);
+					   		
+					   		//write author details to author.csv
+					   		jsonreqobj.indexAuthor(json.getAsJsonObject().get("Id").toString(), jsonArray);
+					   		
+					   		idsVisited.put(json.getAsJsonObject().get("Id").toString(), NUM_HOPS);
+					   		
+							if(!idsToVisitofCurrentHop.isEmpty()){
+								idsToVisitofCurrentHop.remove(json.getAsJsonObject().get("Id").toString());					
+							}
 					} catch (IOException e) {
 						logger.info("Exception occured in indexVertex() - "+e.getMessage());
+						printListSizes();
 						jsonreqobj.backUp();
-						logger.info("BackUp done due to exception in indexVertex()");
-						
-					}
+						logger.info("BackUp done due to exception in indexVertex()");	
+					}   		
 			  } 
-		   		/*ReferenceIds=ReferenceIds.substring(0, ReferenceIds.length()-1);
-		   		JSONResult_edges=getData(ReferenceIds, "Id,RId", "100",Integer.toString(from));
-		   			jsonreqobj.indexEdges(JSONResult_edges);*/
 		   		logger.debug("Out of for loop, Ref Id - "+ReferenceIds);
 
 		   		if(!ReferenceIds.isEmpty()&&sumCitationCount>0){
 		   		try {
-		   			//JSONResult_edges=getData(ReferenceIds.substring(0, ReferenceIds.length()-1), "Id,RId", "50000");
 					JSONResult_edges=getData("OR("+ReferenceIds.substring(0, ReferenceIds.length()-1)+")", "Id,RId", "1000","0"); //We are putting 50k here. Will it work? //change it to 1000
 					if(idsToVisitofNextHop.size()<=12000000){
 						jsonreqobj.addIdsToList(JSONResult_edges);
@@ -425,14 +449,12 @@ public class CrawlAndIndex
 					}
 				} catch (Exception e) {
 					logger.info("Exception occured in indexVertex() - "+e.getMessage());
+					printListSizes();
 					jsonreqobj.backUp();
 					logger.info("BackUp done due to exception in indexVertex()");
 					}	
 				}	
-		   			//jsonreqobj.addIdsToList(JSONResult_edges);
-		   		
-		   		
-				
+		   			   		  						
 				if(idsToVisitofCurrentHop.size()>0){
 					//do nothing
 				}else{
@@ -729,7 +751,9 @@ public class CrawlAndIndex
 			return false;
 		}
 	 
-	 public void backUp(){
+	 public void backUp(){		 
+		 logger.info("NUM_HOPS during Backup -" + NUM_HOPS);
+		 logger.info("Subscription key count during backup - " + subscriptionKeyLimit);
 		 
 	     Iterator itCurrentHop = idsToVisitofCurrentHop.entrySet().iterator();   
 	     if(idsToVisitCurrentHopFN==null){
@@ -813,15 +837,18 @@ public class CrawlAndIndex
 				logger.info("Exception during backup - "+ e.getMessage());
 			}
 	     }
-	     
-	 /*    try {
-			idsToVisitCurrentHopFW.close();
-			idsToVisitNextHopFW.close();
-			idsVisitedFW.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}*/
+
+	     if(subscriptionKeyMaintainingFN==null){
+	    	 subscriptionKeyMaintainingFN="subscriptionKeyMaintaining"+".csv";
+	    	 try {
+	    		 subscriptionKeyMaintainingFW= new FileWriter(new File(idsToVisitCurrentHopFN),true);
+	    		 subscriptionKeyMaintainingFW.write("Subscription during backup - " +subscriptionKeyLimit);
+	    		 subscriptionKeyMaintainingFW.close();
+			} catch (IOException e1) {
+				e1.printStackTrace();
+			}
+	    	
+	     }
 	     
 	 }
 	 
@@ -852,7 +879,18 @@ public class CrawlAndIndex
 			}
 		    logger.debug("Id's from file is loaded to the list.");
 	 }
-		    
+		
+	 public boolean checkForTimeOut(){		 
+		 long currentTimeInMilSec = System.currentTimeMillis();
+		 long tDelta = currentTimeInMilSec - startTimeInMilSec;
+		 long elapsedSeconds = tDelta / 1000;
+		 int min =(int) (elapsedSeconds/60);
+		 if(min>45){
+			 return true;
+		 }
+		 return false;
+	 }
+	 
 	 public enum operation{
 		 CREATE,
 		 UPDATE,
@@ -864,4 +902,6 @@ public class CrawlAndIndex
 		 CITED_BY,
 		 AUTHORS;
 	 }
+	 
+	
 }
