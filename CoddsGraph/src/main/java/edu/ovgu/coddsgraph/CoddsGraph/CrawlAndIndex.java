@@ -38,7 +38,6 @@ public class CrawlAndIndex
 	private  String edgeFileName;
 	private  String authorFileName;
 	private  String UpstreamFileName;
-	private String backUpFileName;
 	private String idsToVisitFN;
 	private String dummyFN;
 	private String subscriptionKeyMaintainingFN;
@@ -100,7 +99,7 @@ public class CrawlAndIndex
     		if(beforeFailOver.toUpperCase().equals("TRUE")){	
 				JSONResult_seed= jsonreqobj.getData("And(And(Ti='a relational model of data for large shared data banks',Composite(AA.AuN=='e f codd')),Y=1970)" ,"Id,RId,Ti,Y,CC,AA.AuN,AA.AuId,J.JN,J.JId,C.CN,C.CId,S.U,VSN","5","0");			
 		    	
-				logger.debug("Indexing started..Execution before failover");
+				logger.debug("Indexing started..Executing first hour crawl");
 		    	
 				JsonObject root = new JsonParser().parse(JSONResult_seed).getAsJsonObject();
 		   		JsonArray jsonarray = root.getAsJsonArray("entities");
@@ -115,17 +114,17 @@ public class CrawlAndIndex
 		    	
     		}
     		else{
-    			logger.debug("Indexing started..Execution after failover");
+    			logger.debug("Indexing started..Execution after first crawl");
     			jsonreqobj.loadToListFromFiles("idsToVisitInCurrentHop.csv", idsToVisitofCurrentHop);
-    			Path pathofidsToVisitInCurrentHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsToVisitInCurrentHop.csv");
+    			Path pathofidsToVisitInCurrentHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"//idsToVisitInCurrentHop.csv");
     			Files.delete(pathofidsToVisitInCurrentHop);
     			
     			jsonreqobj.loadToListFromFiles("idsToVisitNextHop.csv", idsToVisitofNextHop);
-    			Path pathofidsToVisitofNextHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsToVisitNextHop.csv");
+    			Path pathofidsToVisitofNextHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"//idsToVisitNextHop.csv");
     			Files.delete(pathofidsToVisitofNextHop);
     			
     			jsonreqobj.loadToListFromFiles("idsVisited.csv", idsVisited);
-    			Path pathofidsVisited=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsVisited.csv");
+    			Path pathofidsVisited=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"//idsVisited.csv");
     			Files.delete(pathofidsVisited);
     			
     			if(idsToVisitofCurrentHop.isEmpty()){
@@ -218,7 +217,7 @@ public class CrawlAndIndex
 	              builder.setParameter("attributes", attributes );
 	              builder.setParameter("count", count);
 	              builder.addParameter("offset", from);
-	              //builder.setParameter("from", from);
+	              
 	        	  logger.debug("Query - "+builder.toString());
 	              URI uri = builder.build();
 	              HttpGet request = new HttpGet(uri);
@@ -316,7 +315,7 @@ public class CrawlAndIndex
 		   		JsonArray jsonarray = root.getAsJsonArray("entities");
 		   		for(JsonElement json:jsonarray){	
 		   			
-		   			if(NUM_HOPS<=TOTAL_HOPS){
+		   			if(NUM_HOPS<TOTAL_HOPS){
 						RId= "RId="+json.getAsJsonObject().get("Id").toString() ;
 						String citationCount=json.getAsJsonObject().get("CC").toString();
 																			
@@ -346,7 +345,7 @@ public class CrawlAndIndex
 							}
 							
 							quotient=citedCount/1000; 
-							//remainder=citedCount%1000;
+							
 							for(int i=0;i<=quotient;i++){				
 								try {
 									JSONResult_edges=getData(RId, "Id,RId", citationCount,Integer.toString(from));
@@ -894,8 +893,8 @@ public class CrawlAndIndex
 		 long tDelta = currentTimeInMilSec - startTimeInMilSec;
 		 long elapsedSeconds = tDelta / 1000;
 		 int min =(int) (elapsedSeconds/60);
-		 if(min>45){
-			 logger.info("TimeOut - Reached 45 mins since the start");
+		 if(min>=45){
+			 logger.info("TimeOut!!! - It's been 45 minutes since the start");
 			 return true;
 		 }
 		 return false;
