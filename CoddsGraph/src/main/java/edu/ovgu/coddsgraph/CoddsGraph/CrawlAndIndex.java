@@ -117,15 +117,15 @@ public class CrawlAndIndex
     		else{
     			logger.debug("Indexing started..Execution after failover");
     			jsonreqobj.loadToListFromFiles("idsToVisitInCurrentHop.csv", idsToVisitofCurrentHop);
-    			Path pathofidsToVisitInCurrentHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsToVisitInCurrentHop.csv");
+    			Path pathofidsToVisitInCurrentHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"/idsToVisitInCurrentHop.csv");
     			Files.delete(pathofidsToVisitInCurrentHop);
     			
     			jsonreqobj.loadToListFromFiles("idsToVisitNextHop.csv", idsToVisitofNextHop);
-    			Path pathofidsToVisitofNextHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsToVisitNextHop.csv");
+    			Path pathofidsToVisitofNextHop=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"/idsToVisitNextHop.csv");
     			Files.delete(pathofidsToVisitofNextHop);
     			
     			jsonreqobj.loadToListFromFiles("idsVisited.csv", idsVisited);
-    			Path pathofidsVisited=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"\\idsVisited.csv");
+    			Path pathofidsVisited=Paths.get(Paths.get(".").toAbsolutePath().normalize().toString()+"/idsVisited.csv");
     			Files.delete(pathofidsVisited);
     			
     			if(idsToVisitofCurrentHop.isEmpty()){
