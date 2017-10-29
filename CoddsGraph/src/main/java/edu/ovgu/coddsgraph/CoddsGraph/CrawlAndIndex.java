@@ -243,7 +243,7 @@ public class CrawlAndIndex
 			logger.debug("Query - "+builder.toString());
 			URI uri = builder.build();
 			HttpGet request = new HttpGet(uri);
-			request.setHeader("Ocp-Apim-Subscription-Key",subKey ); // dbe029f01ce145f5a41390c981f3bfc5
+			request.setHeader("Ocp-Apim-Subscription-Key",subKey ); 
 			// Request body
 			HttpUriRequest reqEntity = request;    
 			HttpResponse response = httpclient.execute(reqEntity);
